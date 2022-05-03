@@ -1,0 +1,5 @@
+build/
+bin/
+auto_gen_ver_info.h
+**/x64
+**/.vs
