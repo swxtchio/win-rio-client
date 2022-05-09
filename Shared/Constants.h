@@ -1,5 +1,5 @@
 
-static const DWORD EXPECTED_DATA_SIZE = 168;
+static const DWORD EXPECTED_DATA_SIZE = 100;
 
 static const DWORD RECV_BUFFER_SIZE = EXPECTED_DATA_SIZE;
 static const DWORD SEND_BUFFER_SIZE = EXPECTED_DATA_SIZE;
@@ -11,7 +11,7 @@ static const DWORD RIO_PENDING_RECVS = 1500000;
 
 static const DWORD SPIN_COUNT = 4000;
 
-static const DWORD RIO_MAX_RESULTS = 1000;
+static const DWORD RIO_MAX_RESULTS = 2000;
 
 static const DWORD RIO_RESULTS_THRESHOLD = (RIO_MAX_RESULTS / 3) * 2;
 
@@ -19,8 +19,8 @@ static const DWORD IOCP_PENDING_RECVS = 5000;
 
 static const DWORD GQCSEX_MAX_RESULTS = 1000;
 
-static const unsigned short PORT = 8888;
-static const char* MC_IP = "239.5.69.2";
+//static const unsigned short PORT = 8888;
+//static const char* MC_IP = "239.5.69.2";
 
 static const DWORD TIMING_THREAD_AFFINITY_MASK = 1;
 
