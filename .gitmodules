@@ -1,0 +1,9 @@
+[submodule "common/argparse"]
+	path = common/argparse
+	url = git@github.com:swxtchio/argparse.git
+[submodule "common/swxtch-cpp-utils"]
+	path = common/swxtch-cpp-utils
+	url = git@github.com:swxtchio/swxtch-cpp-utils.git
+[submodule "common/fmt"]
+	path = common/fmt
+	url = git@github.com:swxtchio/fmt.git
