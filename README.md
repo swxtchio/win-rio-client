@@ -61,4 +61,8 @@ Optional arguments:
 ### Using it alongside Windows swxtch-xnic2
 * Set --nic to the swxtch-xnic2 Data network interface
 * Set --mcast_ip to the multicast group IP or range of multicast groups to Join
+```
+Example of one multicast group: --mcast_ip 239.5.69.2
+Example of a range of 32 multicast groups: --mcast_ip 239.5.69.0-31
+```
 * Set --total_pkts to the total packets expected to be received to end the run
