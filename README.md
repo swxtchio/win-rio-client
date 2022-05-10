@@ -26,6 +26,12 @@ git submodule init
 git submodule update
 ```
 
+### Temporary fix in swxtch-cpp-utils submodule
+```
+Please change this include reference before building:
+In file NetworkUtils.cpp in swxtch-cpp-utils submodule, replace #include "windows/swxtch-win.hpp" by #include "swxtch-win.hpp" 
+```
+
 ### Build
 ```
 cd <repo-root>/RIOIOCPUDP
