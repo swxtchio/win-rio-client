@@ -42,10 +42,10 @@ args_t OptionParser::ParseArguments() const {
 
     Parser.add_argument("--nic")
         .default_value(string(DEFAULT_IFINDEX))
-        .help("IfIndex (NIC Index) to use");
+        .help("IfIndex or Name of NIC to use");
     Parser.add_argument("--mcast_ip")
         .default_value(string(MULTICAST_IP))
-        .help("multicast group IP.");
+        .help("multicast group IP or range of groups IPs.");
     Parser.add_argument("--mcast_port")
         .default_value(MULTICAST_PORT)
         .help("multicast port")
