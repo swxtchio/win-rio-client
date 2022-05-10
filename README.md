@@ -1,7 +1,6 @@
 # win-rio-client
 Simple multicast client test program that uses the RIO library
 
-```
 # Build instructions
 
 ## Pre-requisites
