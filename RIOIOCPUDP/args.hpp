@@ -9,14 +9,7 @@
 
 #define MAX_NAME_LEN 16
 #define MULTICAST_PORT 10000
-#define MAX_PKTS_TO_RECEIVE 20000000
-/*
-#define PAYLOAD_LENGTH 200
-#define PACKET_RATE_USEC 1
-#define REPORT_FREQUENCY 500000
-#define SLEEP_DURATION_USEC 1000000.0
-#define DEFAULT_BURST_COUNT 1
-*/
+#define MAX_PKTS_TO_RECEIVE 2000 // 20000000
 using Ipv4Vect = std::vector<swxtch::net::Ipv4Addr_t>;
 
 using args_t = struct args_s {

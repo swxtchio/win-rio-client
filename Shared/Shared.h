@@ -7,6 +7,7 @@
 #include <deque>
 #include <string>
 #include <process.h>
+#include <winerror.h>
 
 #include "..\RIOIOCPUDP\args.hpp"
 
@@ -49,6 +50,7 @@ typedef std::deque<RIO_BUFFERID> BufferList;
 
 BufferList g_buffers;
 
+
 CRITICAL_SECTION g_criticalSection;
 
 struct ThreadData {
@@ -77,6 +79,7 @@ struct EXTENDED_RIO_BUF : public RIO_BUF {
 
     EXTENDED_RIO_BUF* pNext;
 };
+
 
 volatile PVOID g_pReadList = 0;
 
@@ -133,6 +136,219 @@ inline void ErrorExit(const char* pFunction) {
 
     ErrorExit(pFunction, lastError);
 }
+
+
+//**************************************************************
+//**************************************************************
+
+
+ULONG g_otherPkts = 0;
+
+
+RIO_BUFFERID g_recvBufferId;
+RIO_BUFFERID g_sendBufferId;
+RIO_BUFFERID g_addrLocBufferId;
+RIO_BUFFERID g_addrRemBufferId;
+
+char* g_recvBufferPointer = NULL;
+char* g_sendBufferPointer = NULL;
+char* g_addrLocBufferPointer = NULL;
+char* g_addrRemBufferPointer = NULL;
+
+EXTENDED_RIO_BUF* g_recvRioBufs = NULL;
+EXTENDED_RIO_BUF* g_sendRioBufs = NULL;
+EXTENDED_RIO_BUF* g_addrLocRioBufs = NULL;
+EXTENDED_RIO_BUF* g_addrRemRioBufs = NULL;
+
+__int64 g_recvRioBufIndex = 0;
+__int64 g_sendRioBufIndex = 0;
+__int64 g_addrLocRioBufIndex = 0;
+__int64 g_addrRemRioBufIndex = 0;
+
+DWORD g_recvRioBufTotalCount = 0;
+DWORD g_sendRioBufTotalCount = 0;
+DWORD g_addrLocRioBufTotalCount = 0;
+DWORD g_addrRemRioBufTotalCount = 0;
+
+
+
+// ######################################
+// ## PACKED STRUCTURES FROM HERE DOWN ##
+// ######################################
+#pragma pack(push, 1)
+
+struct ProtocolHeader_t {
+    uint16_t Token;
+    uint8_t CmdType;
+    uint8_t Tag;
+    uint64_t Seq;
+    uint64_t Timestamp;
+};
+
+/**
+ * IPv4 Header
+ */
+struct ipv4_hdr_t {
+    uint8_t version_ihl;      /**< version and header length */
+    uint8_t type_of_service;  /**< type of service */
+    uint16_t total_length;    /**< length of packet */
+    uint16_t packet_id;       /**< packet ID */
+    uint16_t fragment_offset; /**< fragmentation offset */
+    uint8_t time_to_live;     /**< time to live */
+    uint8_t next_proto_id;    /**< protocol ID */
+    uint16_t hdr_checksum;    /**< header checksum */
+    uint32_t src_addr;        /**< source address */
+    uint32_t dst_addr;        /**< destination address */
+    inline int HdrLen() const {
+        return ((int)((std::byte)version_ihl & (std::byte)0xF) * 4);
+    }
+};
+
+/**
+ * UDP Header
+ */
+struct udp_hdr_t {
+    uint16_t src_port;    /**< UDP source port. */
+    uint16_t dst_port;    /**< UDP destination port. */
+    uint16_t dgram_len;   /**< UDP datagram length */
+    uint16_t dgram_cksum; /**< UDP datagram checksum */
+};
+
+
+SOCKADDR_INET address;
+char str[INET_ADDRSTRLEN];
+ProtocolHeader_t* pHdr;
+udp_hdr_t* pUdp;
+SOCKADDR_INET* pAddLoc;
+SOCKADDR_INET* pAddRem;
+
+void printTime(const uint64_t Timestamp) {
+    std::time_t temp = Timestamp / 1000000000ULL;  // to seconds
+    std::tm t;
+    gmtime_s(&t, &temp);
+    std::cout << std::put_time(&t, "%Y-%m-%d %H:%M:%S %z");
+}
+
+void ShowHdr(const ProtocolHeader_t* pHdr) {
+    cout << endl
+         << pHdr->Token << "\t" << pHdr->CmdType << "\t" << pHdr->Seq << "\t" << pHdr->Tag << "\t";
+    printTime(pHdr->Timestamp);
+}
+
+void ShowAddr(const SOCKADDR_INET* addr) {
+    cout << "\t" << inet_ntop(AF_INET, &(addr->Ipv4.sin_addr), str, INET_ADDRSTRLEN)
+         << " \t " << ntohs(addr->Ipv4.sin_port);
+}
+
+void RioCleanUp() {
+    g_rio.RIOCloseCompletionQueue(g_queue);
+    
+    if (g_recvBufferPointer != nullptr) {
+        g_rio.RIODeregisterBuffer(g_recvBufferId);
+        if (0 == VirtualFreeEx(GetCurrentProcess(), g_recvBufferPointer, 0, MEM_RELEASE)) {
+            ErrorExit("Error deAllocating the buffer");
+        }
+    }
+
+    if (g_addrLocBufferPointer != nullptr) {
+        g_rio.RIODeregisterBuffer(g_addrLocBufferId);
+        if (0 == VirtualFreeEx(GetCurrentProcess(), g_addrLocBufferPointer, 0, MEM_RELEASE)) {
+            ErrorExit("Error deAllocating the buffer");
+        }
+    }
+
+    if (g_addrRemBufferPointer != nullptr) {
+        g_rio.RIODeregisterBuffer(g_addrRemBufferId);
+        if (0 == VirtualFreeEx(GetCurrentProcess(), g_addrRemBufferPointer, 0, MEM_RELEASE)) {
+            ErrorExit("Error deAllocating the buffer");
+        }
+    }
+
+    if (g_sendBufferPointer != nullptr) {
+        g_rio.RIODeregisterBuffer(g_sendBufferId);
+        if (0 == VirtualFreeEx(GetCurrentProcess(), g_sendBufferPointer, 0, MEM_RELEASE)) {
+            ErrorExit("Error deAllocating the buffer");
+        }
+    }
+}
+
+// STATS
+
+struct StatsMcGroupStats_t {
+    uint64_t Packets;
+    uint64_t Bytes;
+    uint64_t Sequence;
+    uint64_t OutOfSequence;
+};
+
+using StatsMcGroupStatsMap = std::map<uint32_t, struct StatsMcGroupStats_t>;
+
+StatsMcGroupStatsMap g_mcGroupMap;
+
+void GroupStatsMapInit(args_t args) {
+    for (const auto mcAddr : args.McastAddrStr) {
+        g_mcGroupMap.insert(
+            std::pair<uint32_t, StatsMcGroupStats_t>(mcAddr.ipNetOrder(), StatsMcGroupStats_t{}));
+    }
+}
+
+void GroupStatsMapReset() {
+    for (StatsMcGroupStatsMap::iterator itr = g_mcGroupMap.begin(); itr != g_mcGroupMap.end(); ++itr) {
+        itr->second.Packets = 0;
+        itr->second.Bytes = 0;
+        itr->second.Sequence = 0;
+        itr->second.OutOfSequence = 0;
+    }
+}
+
+void GroupStatsMapUpdate(const SOCKADDR_INET* addr,
+                         const size_t pktSize,
+                         const ProtocolHeader_t* pHdr) {
+    
+    uint32_t mcGroup = addr->Ipv4.sin_addr.S_un.S_addr;
+
+    StatsMcGroupStatsMap::iterator itr = g_mcGroupMap.find(mcGroup);
+    if (itr == g_mcGroupMap.end()) {
+        StatsMcGroupStats_t st_aux{};
+        g_mcGroupMap.insert(std::pair<uint32_t, StatsMcGroupStats_t>(mcGroup, st_aux));
+    }
+
+    StatsMcGroupStats_t& gmc = g_mcGroupMap[mcGroup];
+
+    if (pHdr->Seq == 0LL) {
+        gmc.Packets = 0;
+        gmc.Bytes = 0;
+        gmc.Sequence = 0;
+        gmc.OutOfSequence = 0;
+    }
+    if (gmc.Sequence < pHdr->Seq) {
+        gmc.Sequence = pHdr->Seq;
+    }
+    else {
+        gmc.OutOfSequence++;
+    }
+    gmc.Packets++;
+    gmc.Bytes += pktSize;
+}
+
+void GroupStatsMapPrint() {
+    cout << "\n  Group           Packets        Bytes      Last Seq   OutOfOrder " << endl;
+    cout << "--------------------------------------------------------------------" << endl;
+
+    for (StatsMcGroupStatsMap::iterator itr = g_mcGroupMap.begin(); itr != g_mcGroupMap.end();
+         ++itr) {
+        cout << inet_ntop(AF_INET, &itr->first, str, INET_ADDRSTRLEN)
+        << "\t" << std::dec 
+        << std::setw(10) << itr->second.Packets << "  "
+        << std::setw(12) << itr->second.Bytes << "  "
+        << std::setw(10) << itr->second.Sequence << "  "
+        << std::setw(10) << itr->second.OutOfSequence << endl;
+    }
+    cout << endl;
+}
+
+
+//-----
 
 template <typename TV, typename TM>
 inline TV RoundDown(TV Value, TM Multiple) {
@@ -233,6 +449,9 @@ inline int join_group(SOCKET sd, UINT32 grpaddr, UINT32 iaddr) {
 
 inline void CreateRIOSocket(args_t args) {
     g_s = CreateSocket(WSA_FLAG_REGISTERED_IO);
+
+    int yes = 1;
+    setsockopt(g_s, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<char*>(&yes), sizeof(yes));
 
     Bind(g_s, args.McastPort);
 
@@ -413,7 +632,158 @@ inline void PostIOCPRecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) 
     cout << totalBuffersAllocated << " total receives pending" << endl;
 }
 
+
 inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
+
+    DWORD totalBuffersAllocated = 0;
+
+    DWORD totalBufferCount = 0;
+    DWORD totalBufferSize = 0;
+    DWORD offset = 0;
+    DWORD recvFlags = 0;
+
+    // SEND
+    /*
+    g_sendBufferPointer = AllocateBufferSpace(SEND_BUFFER_SIZE, RIO_PENDING_SENDS,
+                                                totalBufferSize, totalBufferCount);
+    g_sendBufferId
+        = g_rio.RIORegisterBuffer(g_sendBufferPointer, static_cast<DWORD>(totalBufferSize));
+
+    if (g_sendBufferId == RIO_INVALID_BUFFERID) {
+        printf_s("RIORegisterBuffer Error: %d\n", GetLastError());
+        exit(0);
+    }
+
+    g_sendRioBufs = new EXTENDED_RIO_BUF[totalBufferCount];
+    g_sendRioBufTotalCount = totalBufferCount;
+
+    for (DWORD i = 0; i < g_sendRioBufTotalCount; ++i) {
+        /// split g_sendRioBufs to SEND_BUFFER_SIZE for each RIO operation
+        EXTENDED_RIO_BUF* pBuffer = g_sendRioBufs + i;
+
+        pBuffer->operation = 1; //OP_SEND;
+        pBuffer->BufferId = g_sendBufferId;
+        pBuffer->Offset = offset;
+        pBuffer->Length = SEND_BUFFER_SIZE;
+
+        offset += SEND_BUFFER_SIZE;
+    }
+    */
+
+    // ADDRESS LOCAL
+    
+    /// registering RIO buffers for ADDR
+    totalBufferCount = 0;
+    totalBufferSize = 0;
+    offset = 0;
+
+    g_addrLocBufferPointer = AllocateBufferSpace(ADDR_BUFFER_SIZE, RIO_PENDING_RECVS,
+                                                totalBufferSize, totalBufferCount);
+    g_addrLocBufferId
+        = g_rio.RIORegisterBuffer(g_addrLocBufferPointer, static_cast<DWORD>(totalBufferSize));
+
+    if (g_addrLocBufferId == RIO_INVALID_BUFFERID) {
+        printf_s("RIORegisterBuffer Addr Local Error: %d\n", GetLastError());
+        RioCleanUp();
+        exit(0);
+    }
+
+    g_addrLocRioBufs = new EXTENDED_RIO_BUF[totalBufferCount];
+    g_addrLocRioBufTotalCount = totalBufferCount;
+
+    for (DWORD i = 0; i < totalBufferCount; ++i) {
+        EXTENDED_RIO_BUF* pBuffer = g_addrLocRioBufs + i;
+
+        pBuffer->operation = 3;     //OP_NONE;
+        pBuffer->BufferId = g_addrLocBufferId;
+        pBuffer->Offset = offset;
+        pBuffer->Length = ADDR_BUFFER_SIZE;
+
+        offset += ADDR_BUFFER_SIZE;
+    }
+    
+    //**
+    //
+    // ADDRESS REMOTE
+
+    /// registering RIO buffers for ADDR REM
+    totalBufferCount = 0;
+    totalBufferSize = 0;
+    offset = 0;
+
+    g_addrRemBufferPointer = AllocateBufferSpace(ADDR_BUFFER_SIZE, RIO_PENDING_RECVS,
+                                                 totalBufferSize, totalBufferCount);
+    g_addrRemBufferId
+        = g_rio.RIORegisterBuffer(g_addrRemBufferPointer, static_cast<DWORD>(totalBufferSize));
+
+    if (g_addrRemBufferId == RIO_INVALID_BUFFERID) {
+        printf_s("RIORegisterBuffer Addr Remote Error: %d\n", GetLastError());
+        RioCleanUp();
+        exit(0);
+    }
+
+    g_addrRemRioBufs = new EXTENDED_RIO_BUF[totalBufferCount];
+    g_addrRemRioBufTotalCount = totalBufferCount;
+
+    for (DWORD i = 0; i < totalBufferCount; ++i) {
+        EXTENDED_RIO_BUF* pBuffer = g_addrRemRioBufs + i;
+
+        pBuffer->operation = 4;  // OP_NONE;
+        pBuffer->BufferId = g_addrRemBufferId;
+        pBuffer->Offset = offset;
+        pBuffer->Length = ADDR_BUFFER_SIZE;
+
+        offset += ADDR_BUFFER_SIZE;
+    }
+
+    // RECEIVE
+    
+    /// registering RIO buffers for RECV and then, post pre-RECV
+    totalBufferCount = 0;
+    totalBufferSize = 0;
+    offset = 0;
+
+    g_recvBufferPointer = AllocateBufferSpace(RECV_BUFFER_SIZE, RIO_PENDING_RECVS,
+                                                totalBufferSize, totalBufferCount);
+
+    g_recvBufferId
+        = g_rio.RIORegisterBuffer(g_recvBufferPointer, static_cast<DWORD>(totalBufferSize));
+
+    if (g_recvBufferId == RIO_INVALID_BUFFERID) {
+        printf_s("RIORegisterBuffer Error: %d\n", GetLastError());
+        RioCleanUp();
+        exit(0);
+    }
+
+    g_recvRioBufs = new EXTENDED_RIO_BUF[totalBufferCount];
+
+    for (DWORD i = 0; i < totalBufferCount; ++i) {
+        EXTENDED_RIO_BUF* pBuffer = g_recvRioBufs + i;
+
+        pBuffer->operation = 2;     //OP_RECV;
+        pBuffer->BufferId = g_recvBufferId;
+        pBuffer->Offset = offset;
+        pBuffer->Length = RECV_BUFFER_SIZE;
+
+        offset += RECV_BUFFER_SIZE;
+
+        /// posting pre RECVs
+        if (!g_rio.RIOReceiveEx(g_requestQueue, pBuffer, 1,
+                                &g_addrLocRioBufs[g_addrLocRioBufIndex++],
+                                &g_addrRemRioBufs[g_addrRemRioBufIndex++],
+                                NULL, 0, 0, pBuffer)) {
+
+            printf_s("RIOReceive Error: %d\n", GetLastError());
+            exit(0);
+        }
+    }
+    
+
+    printf_s("%d total receives pending\n", totalBufferCount);
+
+}
+
+inline void PostRIORecvs_Old(const DWORD recvBufferSize, const DWORD pendingRecvs) {
     DWORD totalBuffersAllocated = 0;
 
     while (totalBuffersAllocated < pendingRecvs) {
@@ -421,16 +791,16 @@ inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
 
         DWORD receiveBuffersAllocated = 0;
 
-        char* pBuffer = AllocateBufferSpace(recvBufferSize, pendingRecvs, bufferSize,
+        g_recvBufferPointer = AllocateBufferSpace(recvBufferSize, pendingRecvs, bufferSize,
                                             receiveBuffersAllocated);
 
         totalBuffersAllocated += receiveBuffersAllocated;
 
-        RIO_BUFFERID id = g_rio.RIORegisterBuffer(pBuffer, static_cast<DWORD>(bufferSize));
+        g_recvBufferId = g_rio.RIORegisterBuffer(g_recvBufferPointer, static_cast<DWORD>(bufferSize));
 
-        g_buffers.push_back(id);
+        g_buffers.push_back(g_recvBufferId);
 
-        if (id == RIO_INVALID_BUFFERID) {
+        if (g_recvBufferId == RIO_INVALID_BUFFERID) {
             ErrorExit("RIORegisterBuffer");
         }
 
@@ -438,15 +808,15 @@ inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
 
         DWORD recvFlags = 0;
 
-        EXTENDED_RIO_BUF* pBufs = new EXTENDED_RIO_BUF[receiveBuffersAllocated];
+        g_recvRioBufs = new EXTENDED_RIO_BUF[receiveBuffersAllocated];
 
         for (DWORD i = 0; i < receiveBuffersAllocated; ++i) {
             // now split into buffer slices and post our recvs
 
-            EXTENDED_RIO_BUF* pBuffer = pBufs + i;
+            EXTENDED_RIO_BUF* pBuffer = g_recvRioBufs + i;
 
             pBuffer->operation = 0;
-            pBuffer->BufferId = id;
+            pBuffer->BufferId = g_recvBufferId;
             pBuffer->Offset = offset;
             pBuffer->Length = recvBufferSize;
 
@@ -536,7 +906,7 @@ inline void StopTiming() {
         ErrorExit("QueryPerformanceCounter");
     }
 
-    cout << "Timing stopped" << endl;
+    cout << endl << "Timing stopped" << endl;
 }
 
 inline void WaitForProcessingStarted() {
@@ -657,10 +1027,15 @@ inline void PrintTimings(const char* pDirection = "Received ") {
     cout << pDirection << g_packets << " datagrams" << endl;
 
     if (elapsed.QuadPart != 0) {
-        const double perSec = g_packets / elapsed.QuadPart * 1000.00;
+        const double perSec = ((double)g_packets / (double)elapsed.QuadPart) * 1000.00;
+        cout << g_otherPkts << " other packets" << endl;
 
-        cout << perSec << " datagrams per second" << endl;
+        std::cout << std::setprecision(2)
+                  << std::fixed
+                  << perSec << " datagrams per second" << endl;
     }
+
+    GroupStatsMapPrint();
 }
 
 inline void CleanupRIO() {

@@ -59,7 +59,7 @@ args_t OptionParser::ParseArguments() const {
         });
     Parser.add_argument("--total_pkts")
         .default_value(MAX_PKTS_TO_RECEIVE)
-        .help("Total packets to receive")
+        .help("Total packets to receive (0 -> no packet limit, end with Ctrl-C)")
         .action([](const string& value){
             try{
                 return std::stoi(value);

@@ -6,8 +6,26 @@
 #include "argparse/argparse.hpp"
 #include "../Shared/Utilities.hpp"
 #include "auto_gen_ver_info.h"
+#include <signal.h>  // sig_atomic_t
+
+#define _HIDE_CONSOLE_LOG_
 
 using std::cout;
+
+// Console control handler routine
+BOOL WINAPI CtrlHandler(DWORD fdwCtrlType) {
+    switch (fdwCtrlType) {
+        // Handle the CTRL-C signal.
+        case CTRL_C_EVENT:
+            cout << "Ctrl-C detected" << endl;
+            StopTiming();
+            PrintTimings();
+            RioCleanUp();
+            exit(0);
+        default:
+            return FALSE;
+    }
+}
 
 std::string version() {
     std::stringstream ss_version;
@@ -23,8 +41,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-
-        try {
+    try {
         // Check if the index is a valid one, and override the struct string with
         // the actual IP Address (xxx.xxx.xxx.xxx)
         args.IfIndex = std::to_string(utilities::LocateAdapterWithIfName(args.IfIndex));
@@ -42,8 +59,27 @@ int main(int argc, char** argv) {
     }
     cout << "\tMCast Port    : " << args.McastPort << endl;
     cout << "\tInterface IP Address     : " << args.IfIndex << endl;
-    cout << "\tCounting a total of: " << args.pktsToCount << " packets" << endl;
-    //
+
+    // If pktsToCount is 0 then run until a signal interrupt is received
+    if (args.pktsToCount == 0) {
+        if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
+            ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
+        }
+        cout << "\n\tThe Control Handler is installed." << endl;
+        if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
+            ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
+        }
+        cout << "\tNormal processing of Ctrl-C." << endl;
+        cout << "\tPress Ctrl-C to exit" << endl;
+    } else {
+        if (SetConsoleCtrlHandler(NULL, TRUE) == 0) {
+            ErrorExit("SetConsoleCtrlHandler for ignoring Ctrl-C.");
+        }
+        cout << "\tIgnoring Ctrl-C." << endl;
+        cout << "\tCounting a total of: " << args.pktsToCount << " packets" << endl;
+    }
+
+    GroupStatsMapInit(args);
 
     SetupTiming("RIO IOCP UDP");
 
@@ -65,6 +101,7 @@ int main(int argc, char** argv) {
     g_queue = g_rio.RIOCreateCompletionQueue(RIO_PENDING_RECVS, &completionType);
 
     if (g_queue == RIO_INVALID_CQ) {
+        RioCleanUp();
         ErrorExit("RIOCreateCompletionQueue");
     }
 
@@ -80,6 +117,7 @@ int main(int argc, char** argv) {
                                                  g_queue, pContext);
 
     if (g_requestQueue == RIO_INVALID_RQ) {
+        RioCleanUp();
         ErrorExit("RIOCreateRequestQueue");
     }
 
@@ -92,6 +130,7 @@ int main(int argc, char** argv) {
     INT notifyResult = g_rio.RIONotify(g_queue);
 
     if (notifyResult != ERROR_SUCCESS) {
+        RioCleanUp();
         ErrorExit("RIONotify", notifyResult);
     }
 
@@ -103,12 +142,14 @@ int main(int argc, char** argv) {
 
     if (!::GetQueuedCompletionStatus(g_hIOCP, &numberOfBytes, &completionKey, &pOverlapped,
                                      INFINITE)) {
+        RioCleanUp();
         ErrorExit("GetQueuedCompletionStatus");
     }
 
     ULONG numResults = g_rio.RIODequeueCompletion(g_queue, results, RIO_MAX_RESULTS);
 
     if (0 == numResults || RIO_CORRUPT_CQ == numResults) {
+        RioCleanUp();
         ErrorExit("RIODequeueCompletion");
     }
 
@@ -118,51 +159,92 @@ int main(int argc, char** argv) {
 
     int workValue = 0;
 
+    EXTENDED_RIO_BUF* recvBuf = NULL;
+    EXTENDED_RIO_BUF* addrLocBuf = NULL;
+    EXTENDED_RIO_BUF* addrRemBuf = NULL;
+    char* addrLocOffset = NULL;
+    char* addrRemOffset = NULL;
+
+
     do {
         for (DWORD i = 0; i < numResults; ++i) {
-            EXTENDED_RIO_BUF* pBuffer
-                = reinterpret_cast<EXTENDED_RIO_BUF*>(results[i].RequestContext);
+            recvBuf = reinterpret_cast<EXTENDED_RIO_BUF*>(results[i].RequestContext);
 
             if (results[i].BytesTransferred == EXPECTED_DATA_SIZE) {
                 g_packets++;
 
                 workValue += DoWork(g_workIterations);
 
-                if (!g_rio.RIOReceive(g_requestQueue, pBuffer, 1, recvFlags, pBuffer)) {
-                    ErrorExit("RIOReceive");
+                if (!g_rio.RIOReceiveEx(
+                        g_requestQueue, recvBuf, 1,
+                        &g_addrLocRioBufs[g_addrLocRioBufIndex % g_addrLocRioBufTotalCount],
+                        &g_addrRemRioBufs[g_addrRemRioBufIndex % g_addrRemRioBufTotalCount],
+                        NULL, 0, 0, recvBuf)) {
+                    RioCleanUp();
+                    ErrorExit("RIOReceiveEx Local Address");
                 }
 
-                // done = false;
-                done = (g_packets >= args.pktsToCount);
+
+                pHdr = (ProtocolHeader_t*)(g_recvBufferPointer + recvBuf->Offset);
+
+#ifndef _HIDE_CONSOLE_LOG_
+                ShowHdr(pHdr);
+#endif
+
+                addrLocBuf = &(g_addrLocRioBufs[g_addrLocRioBufIndex++ % g_addrLocRioBufTotalCount]);
+
+                addrLocOffset = g_addrLocBufferPointer + addrLocBuf->Offset;
+
+#ifndef _HIDE_CONSOLE_LOG_
+                ShowAddr((SOCKADDR_INET*)addrLocOffset);
+#endif
+
+                addrRemBuf = &(g_addrRemRioBufs[g_addrRemRioBufIndex++ % g_addrRemRioBufTotalCount]);
+
+                addrRemOffset = g_addrRemBufferPointer + addrRemBuf->Offset;
+
+#ifndef _HIDE_CONSOLE_LOG_
+                ShowAddr((SOCKADDR_INET*)addrRemOffset);
+#endif
+
+                GroupStatsMapUpdate((SOCKADDR_INET*)addrLocOffset,
+                                    EXPECTED_DATA_SIZE, pHdr);
+
+                if (args.pktsToCount > 0) {
+                    done = (g_packets >= args.pktsToCount);
+                }
             } else {
-                done = true;
-                printf("results[i].BytesTransferred=%u\n", results[i].BytesTransferred);
+                g_otherPkts++;
             }
         }
 
         if (!done) {
-            const INT notifyResult = g_rio.RIONotify(g_queue);
+            notifyResult = g_rio.RIONotify(g_queue);
 
             if (notifyResult != ERROR_SUCCESS) {
+                RioCleanUp();
                 ErrorExit("RIONotify");
             }
 
-            if (!::GetQueuedCompletionStatus(g_hIOCP, &numberOfBytes, &completionKey, &pOverlapped,
-                                             INFINITE)) {
+            if (!::GetQueuedCompletionStatus(g_hIOCP, &numberOfBytes, &completionKey,
+                                                &pOverlapped, INFINITE)) {
+                RioCleanUp();
                 ErrorExit("GetQueuedCompletionStatus");
             }
 
             numResults = g_rio.RIODequeueCompletion(g_queue, results, RIO_MAX_RESULTS);
 
-            if (0 == numResults || RIO_CORRUPT_CQ == numResults) {
+            if (RIO_CORRUPT_CQ == numResults) {
+                RioCleanUp();
                 ErrorExit("RIODequeueCompletion");
             }
+
         }
     } while (!done);
 
     StopTiming();
-
     PrintTimings();
+    RioCleanUp();
 
     return workValue;
 }
