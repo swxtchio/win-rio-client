@@ -348,6 +348,30 @@ void GroupStatsMapPrint() {
 }
 
 
+void BindSocket(SOCKET s, uint16_t bindPort, const std::string& bindAddr) {
+    sockaddr_in addr;
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(bindPort);
+    if (!bindAddr.empty()) {
+        auto res = inet_pton(AF_INET, bindAddr.c_str(), &addr.sin_addr.s_addr);
+        if (res != 1) {
+            RioCleanUp();
+            ErrorExit("Error converting the specified address to bind");
+        }
+
+    } else {
+        addr.sin_addr.s_addr = INADDR_ANY;
+    }
+
+    if (SOCKET_ERROR
+        == ::bind(s, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr))) {
+        RioCleanUp();
+        ErrorExit("Error during socket binding process");
+    }
+}
+
+
 //-----
 
 template <typename TV, typename TM>
@@ -453,7 +477,8 @@ inline void CreateRIOSocket(args_t args) {
     int yes = 1;
     setsockopt(g_s, IPPROTO_IP, IP_PKTINFO, reinterpret_cast<char*>(&yes), sizeof(yes));
 
-    Bind(g_s, args.McastPort);
+    //Bind(g_s, args.McastPort);
+    BindSocket(g_s, args.McastPort, args.IfIndex);
 
     string strIp = "";
     Ipv4Vect addrs = args.McastAddrStr;
