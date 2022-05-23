@@ -51,33 +51,31 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    //
     cout << "Config: " << endl;
     cout << "\tWaiting traffic from " << args.McastAddrStr.size() << " multicast groups" << endl;
     for (const auto mcAddr : args.McastAddrStr) {
-        cout << "Mcast group: " << mcAddr.str() << endl;
+        cout << "\tMcast group: " << mcAddr.str() << endl;
     }
     cout << "\tMCast Port    : " << args.McastPort << endl;
     cout << "\tInterface IP Address     : " << args.IfIndex << endl;
 
-    // If pktsToCount is 0 then run until a signal interrupt is received
-    if (args.pktsToCount == 0) {
-        if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
-            ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
-        }
-        cout << "\n\tThe Control Handler is installed." << endl;
-        if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
-            ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
-        }
-        cout << "\tNormal processing of Ctrl-C." << endl;
-        cout << "\tPress Ctrl-C to exit" << endl;
-    } else {
+    if (args.pktsToCount > 0) {
         if (SetConsoleCtrlHandler(NULL, TRUE) == 0) {
             ErrorExit("SetConsoleCtrlHandler for ignoring Ctrl-C.");
         }
-        cout << "\tIgnoring Ctrl-C." << endl;
-        cout << "\tCounting a total of: " << args.pktsToCount << " packets" << endl;
+        cout << "Counting a total of: " << args.pktsToCount << " packets" << endl;
     }
+
+    if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
+    }
+    cout << "\n\tThe Control Handler is installed." << endl;
+    if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
+    }
+    cout << "\tNormal processing of Ctrl-C." << endl;
+    cout << "\tPress Ctrl-C to exit" << endl;
+
 
     GroupStatsMapInit(args);
 
