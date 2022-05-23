@@ -163,6 +163,7 @@ int main(int argc, char** argv) {
     char* addrLocOffset = NULL;
     char* addrRemOffset = NULL;
 
+    uint64_t totalOutOfOrder = 0;
 
     do {
         for (DWORD i = 0; i < numResults; ++i) {
@@ -210,6 +211,11 @@ int main(int argc, char** argv) {
 
                 if (args.pktsToCount > 0) {
                     done = (g_packets >= args.pktsToCount);
+                }
+
+                if ((g_packets % RIO_MAX_RESULTS) == 0) {
+                    if ((totalOutOfOrder = GroupStatsMapTotalOOO()) > 0)
+                        cout << "* OutOfOrder Count = " << totalOutOfOrder << endl;
                 }
             } else {
                 g_otherPkts++;

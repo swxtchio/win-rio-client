@@ -301,10 +301,19 @@ void GroupStatsMapReset() {
     }
 }
 
+uint64_t GroupStatsMapTotalOOO() {
+    uint64_t total = 0;
+    for (StatsMcGroupStatsMap::iterator itr = g_mcGroupMap.begin(); itr != g_mcGroupMap.end();
+         ++itr) {
+        total += itr->second.OutOfSequence;
+    }
+    return total;
+}
+
 void GroupStatsMapUpdate(const SOCKADDR_INET* addr,
                          const size_t pktSize,
                          const ProtocolHeader_t* pHdr) {
-    
+    static bool first = true;
     uint32_t mcGroup = addr->Ipv4.sin_addr.S_un.S_addr;
 
     StatsMcGroupStatsMap::iterator itr = g_mcGroupMap.find(mcGroup);
@@ -326,6 +335,11 @@ void GroupStatsMapUpdate(const SOCKADDR_INET* addr,
     }
     else {
         gmc.OutOfSequence++;
+
+        if (first) {
+            cout << "First OOO Seq.: " << gmc.Sequence << endl;
+            first = false;
+        }
     }
     gmc.Packets++;
     gmc.Bytes += pktSize;
@@ -344,6 +358,10 @@ void GroupStatsMapPrint() {
         << std::setw(10) << itr->second.Sequence << "  "
         << std::setw(10) << itr->second.OutOfSequence << endl;
     }
+
+    cout << "--------------------------------------------------------------------" << endl;
+    cout << "Total                                                 " <<
+            std::setw(10) << GroupStatsMapTotalOOO() << endl;
     cout << endl;
 }
 
