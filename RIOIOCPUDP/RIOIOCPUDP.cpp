@@ -54,10 +54,10 @@ int main(int argc, char** argv) {
     cout << "Config: " << endl;
     cout << "\tWaiting traffic from " << args.McastAddrStr.size() << " multicast groups" << endl;
     for (const auto mcAddr : args.McastAddrStr) {
-        cout << "\tMcast group: " << mcAddr.str() << endl;
+        cout << "\tMCast group\t\t: " << mcAddr.str() << endl;
     }
-    cout << "\tMCast Port    : " << args.McastPort << endl;
-    cout << "\tInterface IP Address     : " << args.IfIndex << endl;
+    cout << "\tMCast Port\t\t: " << args.McastPort << endl;
+    cout << "\tInterface IP Address\t: " << args.IfIndex << endl;
 
     if (args.pktsToCount > 0) {
         if (SetConsoleCtrlHandler(NULL, TRUE) == 0) {
@@ -65,17 +65,6 @@ int main(int argc, char** argv) {
         }
         cout << "Counting a total of: " << args.pktsToCount << " packets" << endl;
     }
-
-    if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
-        ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
-    }
-    cout << "\n\tThe Control Handler is installed." << endl;
-    if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
-        ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
-    }
-    cout << "\tNormal processing of Ctrl-C." << endl;
-    cout << "\tPress Ctrl-C to exit" << endl;
-
 
     GroupStatsMapInit(args);
 
@@ -121,6 +110,16 @@ int main(int argc, char** argv) {
 
     PostRIORecvs(RECV_BUFFER_SIZE, RIO_PENDING_RECVS);
 
+    if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
+    }
+    cout << "\tThe Control Handler is installed." << endl;
+    if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
+    }
+    cout << "\tNormal processing of Ctrl-C." << endl;
+    cout << "\tPress Ctrl-C to exit" << endl;
+
     bool done = false;
 
     RIORESULT results[RIO_MAX_RESULTS];
@@ -164,6 +163,7 @@ int main(int argc, char** argv) {
     char* addrRemOffset = NULL;
 
     uint64_t totalOutOfOrder = 0;
+    uint64_t lastOutOfOrder = 0;
 
     do {
         for (DWORD i = 0; i < numResults; ++i) {
@@ -213,9 +213,13 @@ int main(int argc, char** argv) {
                     done = (g_packets >= args.pktsToCount);
                 }
 
-                if ((g_packets % RIO_MAX_RESULTS) == 0) {
-                    if ((totalOutOfOrder = GroupStatsMapTotalOOO()) > 0)
-                        cout << "* OutOfOrder Count = " << totalOutOfOrder << endl;
+                if ((g_packets % (RIO_MAX_RESULTS * 4)) == 0) {
+
+                    if (((totalOutOfOrder = GroupStatsMapTotalOOO()) > 0)
+                        && (totalOutOfOrder > lastOutOfOrder)) {
+                        lastOutOfOrder = totalOutOfOrder;
+                        cout << "OutOfOrder Count = " << totalOutOfOrder << endl;
+                    }
                 }
             } else {
                 g_otherPkts++;

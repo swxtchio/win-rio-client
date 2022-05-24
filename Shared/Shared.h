@@ -337,7 +337,7 @@ void GroupStatsMapUpdate(const SOCKADDR_INET* addr,
         gmc.OutOfSequence++;
 
         if (first) {
-            cout << "First OOO Seq.: " << gmc.Sequence << endl;
+            cout << "First OutOfOrder Seq.: " << gmc.Sequence << endl;
             first = false;
         }
     }
