@@ -104,7 +104,7 @@ void RioProducer::Start() {
     OVERLAPPED* pOverlapped = 0;
     DWORD sendFlags = 0;
     ULONGLONG sequenceNumber = 0;
-    DWORD maxResults = m_MaxOutstandingSend;  // m_Args->PacketRate;
+    DWORD maxResults = m_MaxOutstandingSend;
     DWORD groupCounter = 0;
     m_Timing.setStart();
     auto results = std::make_unique<RIORESULT[]>(maxResults);

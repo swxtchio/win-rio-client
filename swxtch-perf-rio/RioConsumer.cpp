@@ -113,7 +113,6 @@ void RioConsumer::Start() {
         if (!::GetQueuedCompletionStatus(m_hIOCP, &numberOfBytes, &completionKey, &pOverlapped,
                                          100)) {
             shouldNotify = false;
-            // utilities::ErrorExit("GetQueuedCompletionStatus");
         }
 
         ULONG numResults
@@ -122,7 +121,6 @@ void RioConsumer::Start() {
         // If there is no pkts to read right now just loop around
         if (0 == numResults || RIO_CORRUPT_CQ == numResults) {
             continue;
-            // utilities::ErrorExit("RIODequeueCompletion");
         }
         if (m_TotalPkts == 0)
             m_Timing.setStart(); //overwrite start time
@@ -179,8 +177,8 @@ void RioConsumer::GroupStatsUpdate(const SOCKADDR_INET* addr,
         gmc.ExpectedSequence.store(pHdr->Seq + 1);
         gmc.Sequence.store(pHdr->Seq);
     } else {
-        // Out of order packets, if they are in a window of at least 3 packets.
-        if (gmc.RxDropped.load() > 0)  //&& (gmc.ExpectedSequence - (pHdr->Seq) <= 3))
+        // Out of order packets
+        if (gmc.RxDropped.load() > 0)
             gmc.RxDropped--;
         gmc.OutOfOrder++;
     }
