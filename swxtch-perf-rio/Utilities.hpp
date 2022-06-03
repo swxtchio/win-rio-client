@@ -1,12 +1,17 @@
 #pragma once
-
+// clang-format off
+#include <iostream>
 #include <string>
+#include <sstream>
 #include <codecvt>
+#include <process.h>
 #include <WinSock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <Windows.h>
 #include <Msi.h>
+#include <chrono>
+// clang-format on
 
 #pragma comment(lib, "iphlpapi")
 #pragma comment(lib, "ws2_32.lib")
@@ -14,7 +19,9 @@
 
 namespace utilities {
 
-bool nicIsNumber(const std::string& nicString) {
+constexpr uint64_t ONE_SECOND = 1000000000;
+
+inline bool nicIsNumber(const std::string& nicString) {
     for (char const& c : nicString) {
         if (std::isdigit(c) == 0)
             return false;
@@ -22,13 +29,37 @@ bool nicIsNumber(const std::string& nicString) {
     return true;
 }
 
+inline uint64_t get_unix_time(void) {
+    auto now = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+}
+
+/**
+ * @brief Wait for @spin nanoseconds. Wasting CPU time
+ * 
+ * @param nano 
+ */
+inline void spin(uint64_t nano) {
+    if (nano <= 1000) {
+        return;
+    }
+    auto StartTime(std::chrono::high_resolution_clock::now());
+    while (true) {
+        auto CurrentTime(std::chrono::high_resolution_clock::now());
+        auto ElapsedTime_ns
+            = std::chrono::duration_cast<std::chrono::nanoseconds>(CurrentTime - StartTime).count();
+        if (ElapsedTime_ns >= nano)
+            break;
+    }
+}
+
 // TODO: wstring_convert and codecvt are deprecated in C++17.
-std::string wstr_to_str(const std::wstring& wstr) {
+inline std::string wstr_to_str(const std::wstring& wstr) {
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> convert;
     return convert.to_bytes(wstr);
 }
 
-uint8_t LocateAdapterWithIfName(std::string ifNameToFind) {
+inline uint8_t LocateAdapterWithIfName(std::string ifNameToFind) {
     uint8_t ifIndex = 0;
 
     // Set the flags to pass to GetAdaptersAddresses
@@ -98,13 +129,13 @@ uint8_t LocateAdapterWithIfName(std::string ifNameToFind) {
     return ifIndex;
 }
 
-void FreeAdapterInfo(IP_ADAPTER_INFO* AdapterInfo) {
+inline void FreeAdapterInfo(IP_ADAPTER_INFO* AdapterInfo) {
     if (AdapterInfo) {
         free(AdapterInfo);
     }
 }
 
-IP_ADAPTER_INFO* CreateAdapterInfo() {
+inline IP_ADAPTER_INFO* CreateAdapterInfo() {
     ULONG Buflen = sizeof(IP_ADAPTER_INFO);
     IP_ADAPTER_INFO* AdapterInfo = (IP_ADAPTER_INFO*)malloc(Buflen);
 
@@ -119,7 +150,7 @@ IP_ADAPTER_INFO* CreateAdapterInfo() {
     return nullptr;
 }
 
-IP_ADAPTER_INFO* LocateAdapterByIndex(int index, IP_ADAPTER_INFO* AdapterInfo) {
+inline IP_ADAPTER_INFO* LocateAdapterByIndex(int index, IP_ADAPTER_INFO* AdapterInfo) {
     IP_ADAPTER_INFO* LocatedAdapter = nullptr;
     for (IP_ADAPTER_INFO* Adapter = AdapterInfo; Adapter; Adapter = Adapter->Next) {
         if (Adapter->Index == index) {
@@ -130,7 +161,7 @@ IP_ADAPTER_INFO* LocateAdapterByIndex(int index, IP_ADAPTER_INFO* AdapterInfo) {
     return LocatedAdapter;
 }
 
-std::string GetInterfaceIpAddress(const std::string& ifname) {
+inline std::string GetInterfaceIpAddress(const std::string& ifname) {
     std::string IpAddress = "0.0.0.0";
     IP_ADAPTER_INFO* AdapterInfo = CreateAdapterInfo();
     if (AdapterInfo) {
@@ -147,6 +178,62 @@ std::string GetInterfaceIpAddress(const std::string& ifname) {
     }
     FreeAdapterInfo(AdapterInfo);
     return IpAddress;
+}
+
+inline std::string GetLastErrorMessage(DWORD last_error, bool stripTrailingLineFeed = true) {
+    CHAR errmsg[512];
+
+    if (!FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, last_error,
+                        0, errmsg, 511, NULL)) {
+        // if we fail, call ourself to find out why and return that error
+
+        const DWORD thisError = ::GetLastError();
+
+        if (thisError != last_error) {
+            return GetLastErrorMessage(thisError, stripTrailingLineFeed);
+        } else {
+            // But don't get into an infinite loop...
+
+            return "Failed to obtain error string";
+        }
+    }
+
+    if (stripTrailingLineFeed) {
+        const size_t length = strlen(errmsg);
+
+        if (errmsg[length - 1] == '\n') {
+            errmsg[length - 1] = 0;
+
+            if (errmsg[length - 2] == '\r') {
+                errmsg[length - 2] = 0;
+            }
+        }
+    }
+
+    return errmsg;
+}
+
+
+inline void ErrorExit(const char* pFunction, const DWORD lastError) {
+    std::cout << "Error: " << pFunction << " failed: " << lastError << std::endl;
+    std::cout << GetLastErrorMessage(lastError) << std::endl;
+    exit(0);
+}
+
+inline void ErrorExit(const char* pFunction) {
+    const DWORD lastError = ::GetLastError();
+
+    ErrorExit(pFunction, lastError);
+}
+
+template <typename TV, typename TM>
+inline TV RoundDown(TV Value, TM Multiple) {
+    return ((Value / Multiple) * Multiple);
+}
+
+template <typename TV, typename TM>
+inline TV RoundUp(TV Value, TM Multiple) {
+    return (RoundDown(Value, Multiple) + (((Value % Multiple) > 0) ? Multiple : 0));
 }
 
 }  // namespace utilities

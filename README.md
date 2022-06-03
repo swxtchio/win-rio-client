@@ -26,12 +26,6 @@ git submodule init
 git submodule update
 ```
 
-### Temporary fix in swxtch-cpp-utils submodule
-```
-Please change this include reference before building:
-In file NetworkUtils.cpp in swxtch-cpp-utils submodule, replace #include "windows/swxtch-win.hpp" by #include "swxtch-win.hpp" 
-```
-
 ### Build
 ```
 cd <repo-root>/RIOIOCPUDP
@@ -55,14 +49,26 @@ bin\Release\swxtch-perf-rio.exe
 swxtch-perf-rio.exe -h
 Usage: C:\Users\alex\source\repos\win-rio-client\bin\Release\swxtch-perf-rio.exe [options]
 
+Positional arguments:
+[producer|consumer] Produce or Consume multicast packets.
+
 Optional arguments:
 -h --help       shows help message and exits [default: false]
 -v --version    prints version information and exits [default: false]
 --nic           IfIndex or Name of NIC to use [default: "Ethernet"]
 --mcast_ip      multicast group IP or range of groups IPs. [default: "239.5.69.2"]
 --mcast_port    multicast port [default: 10000]
+--pps           Packets per seconds to produce. [default: 1]
 --total_pkts    Total packets to receive [default: 20000000]
+--seconds       Number of seconds to run the application. Insert 0 if you do not want to a use a time limit.
+                [default: 0]
 ```
+### How to produce traffic with another application and consume with RIO App
+
+The RIO application will consume UDP Multicast traffic with 100 Bytes of payload. Other packet sizes
+will be consumed but ignored in the statistics calculation.
+The UDP Payload needs to have a packet sequence of 64 bits stored at offset +32 (Sequence starts at byte 32
+up to 63). The other fields could be filled with zeroes.
 
 ### Using it alongside Windows swxtch-xnic2
 * Set --nic to the swxtch-xnic2 Data network interface
