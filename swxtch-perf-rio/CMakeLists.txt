@@ -40,8 +40,8 @@ include(${RIO_HOME}/.cmake/version-vars-windows.cmake)
 # Including version
 set(RIO_BUILD_VER "0.1.0")
 message("Build Version: ${RIO_BUILD_VER}")
-message("Build Commit: ${SWXTCH_BUILD_COMMIT}")
-message("Build Date: ${SWXTCH_BUILD_DATE}")
+message("Build Commit: ${RIO_BUILD_COMMIT}")
+message("Build Date: ${RIO_BUILD_DATE}")
 configure_file("auto_gen_ver_info.h.in" "${CMAKE_CURRENT_SOURCE_DIR}/auto_gen_ver_info.h" NEWLINE_STYLE UNIX)
 
 
@@ -51,8 +51,6 @@ SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS}")
 
 
 include_directories(${RIO_HOME}/common)
-include_directories(${RIO_HOME}/Shared)
-include_directories(${RIO_HOME}/windows)
 
 if (NOT TARGET fmt)
     add_subdirectory(${RIO_HOME}/common/fmt  ${CMAKE_BINARY_DIR}/common/fmt)
@@ -63,14 +61,15 @@ if (NOT TARGET argparse)
     add_subdirectory(${RIO_HOME}/common/argparse  ${CMAKE_BINARY_DIR}/common/argparse)
 endif()
 
-if (NOT TARGET swxtchutils)
-    add_subdirectory(${RIO_HOME}/common/swxtch-cpp-utils  ${CMAKE_BINARY_DIR}/common/swxtch-cpp-utils)
-endif()
 
-add_executable (swxtch-perf-rio
-    RIOIOCPUDP.cpp
-    stdafx.cpp
-    args.cpp
+add_executable(swxtch-perf-rio
+  swxtch-perf-rio.cpp
+  RioSession.cpp
+  RioConsumer.cpp
+  RioProducer.cpp
+  stdafx.cpp
+  args.cpp
+  StringUtils.cpp
 )
 
 set_property(TARGET swxtch-perf-rio PROPERTY
@@ -81,8 +80,7 @@ set_property(TARGET fmt PROPERTY
 )
 
 target_link_libraries(swxtch-perf-rio
-    Threads::Threads
-    fmt::fmt
-    argparse
-    swxtchutils
+  Threads::Threads
+  fmt::fmt
+  argparse
 )

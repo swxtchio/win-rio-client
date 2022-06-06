@@ -10,8 +10,8 @@
 #include <filesystem>
 #include <random>
 
-#include "swxtch-cpp-utils/Range.hpp"
-#include "swxtch-cpp-utils/StringUtils.hpp"
+#include "Range.hpp"
+#include "StringUtils.hpp"
 //#include "swxtch-cpp-utils/StringUtils.hpp"
 // clang-format on
 
@@ -39,7 +39,7 @@ static Ipv4Vect ParseDestinations(const std::string& dest,
 args_t OptionParser::ParseArguments() const {
     args_t args;
     argparse::ArgumentParser Parser(m_argv[0], m_version);
-
+    Parser.add_argument("command").help("[producer|consumer] produce/consume multicast packets");
     Parser.add_argument("--nic")
         .default_value(string(DEFAULT_IFINDEX))
         .help("IfIndex or Name of NIC to use");
@@ -59,12 +59,34 @@ args_t OptionParser::ParseArguments() const {
         });
     Parser.add_argument("--total_pkts")
         .default_value(MAX_PKTS_TO_RECEIVE)
-        .help("Total packets to receive")
-        .action([](const string& value){
-            try{
+        .help("Total packets to send/receive. Insert 0 to not count")
+        .action([](const string& value) {
+            try {
                 return std::stoi(value);
-            } catch (const std::invalid_argument&){
+            } catch (const std::invalid_argument&) {
                 std::cout << "Expected a valid packet number to receive";
+                exit(1);
+            }
+        });
+    Parser.add_argument("--pps")
+        .default_value(PACKET_RATE_SEC)
+        .help("(producer command only) packet-rate or packet per seconds")
+        .action([](const string& value) {
+            try {
+                return std::stoi(value);
+            } catch (const std::invalid_argument&) {
+                std::cout << "Integer expected for spin value";
+                exit(1);
+            }
+        });
+    Parser.add_argument("--seconds")
+        .default_value(RUN_FOR_NSEC)
+        .help("Number of seconds to run the application. Insert 0 to run indefinitely")
+        .action([](const string& value) {
+            try {
+                return std::stoi(value);
+            } catch (const std::invalid_argument&) {
+                std::cout << "Expected a valid number of seconds";
                 exit(1);
             }
         });
@@ -76,19 +98,21 @@ args_t OptionParser::ParseArguments() const {
         exit(1);
     }
 
+    args.Command = Parser.get<>("command").c_str();
     args.IfIndex = Parser.get<>("--nic").c_str();
     args.McastAddrStr
         = ParseDestinations(Parser.get<>("--mcast_ip"), swxtch::net::Ipv4Addr_t{"239.5.69.2"});
     args.McastPort = (uint16_t)Parser.get<int>("--mcast_port");
-    args.pktsToCount = (uint32_t)Parser.get<int>("--total_pkts");
+    args.PktsToCount = (uint32_t)Parser.get<int>("--total_pkts");
+    args.PacketRate = Parser.get<int>("--pps");
+    args.SecondsToRun = Parser.get<int>("--seconds");
 
     return args;
 }
 
 bool OptionParser::isValidMulticastIp(const Ipv4Vect& ipVect) const {
-
     bool flag = true;
-    for ( const auto mcipstr : ipVect){
+    for (const auto mcipstr : ipVect) {
         size_t pos = 0;
         std::string token;
         std::string _mcipstr(mcipstr.str());
@@ -126,13 +150,21 @@ bool OptionParser::isValidMulticastIp(const Ipv4Vect& ipVect) const {
 bool OptionParser::Check(const args_t* args) const {
     bool sanity_check = false;
     if (args != nullptr) {
-        if (!isValidMulticastIp(args->McastAddrStr)) {
+        string cmd = args->Command;
+        if (cmd != PRODUCER_COMMAND && cmd != CONSUMER_COMMAND) {
+            errorMessage("Invalid Command. Expected producer or consumer.");
+        } else if (!isValidMulticastIp(args->McastAddrStr)) {
             errorMessage(
                 "Invalid Multicast IP. Expected value between 224.0.0.1 and 239.255.255.255");
         } else if (args->IfIndex == "") {
             errorMessage("Invalid IfIndex.");
         } else if ((args->McastPort > 49151) || (args->McastPort < 1024)) {
             errorMessage("Invalid Multicast Port. Expected value between 1024 and 49151.");
+        } else if ((args->PacketRate * args->McastAddrStr.size() > 1000000)
+                   || (args->PacketRate < 1)) {
+            errorMessage(
+                "Invalid Packet Rate. Expected a value between 0 and 1M. (Sum of all pps per "
+                "group");
         } else {
             sanity_check = true;
         }

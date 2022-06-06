@@ -1,0 +1,3 @@
+#define APP_VERSION "@RIO_BUILD_VER@"
+#define GIT_COMMIT "@RIO_BUILD_COMMIT@"
+#define DATE "@RIO_BUILD_DATE@"
