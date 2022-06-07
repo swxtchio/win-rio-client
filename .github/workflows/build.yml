@@ -1,0 +1,38 @@
+name: build
+on:
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build-windows:
+    runs-on: [self-hosted, x64, windows-b]
+    steps:
+      - name: Clean working directory
+        shell: pwsh
+        run: rm -r -fo *
+        working-directory: .
+
+      - name: Check out code
+        uses: actions/checkout@v3.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Git submodule update
+        shell: pwsh
+        run: git submodule update --init --recursive --force
+
+      - name: Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Configure build system
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -- /consoleloggerparameters:Nosummary
