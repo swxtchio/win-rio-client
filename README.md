@@ -28,7 +28,7 @@ git submodule update
 
 ### Build
 ```
-cd <repo-root>/RIOIOCPUDP
+cd <repo-root>
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -- /consoleloggerparameters:Nosummary
 ```
