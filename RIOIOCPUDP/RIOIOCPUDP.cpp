@@ -18,9 +18,13 @@ BOOL WINAPI CtrlHandler(DWORD fdwCtrlType) {
         // Handle the CTRL-C signal.
         case CTRL_C_EVENT:
             cout << "Ctrl-C detected" << endl;
-            StopTiming();
-            PrintTimings();
-            RioCleanUp();
+            CloseRIOApp();
+            exit(0);
+            break;
+        // Handle the CLOSE signal (Window X Button, End-Process, ALT-F4) ??.
+        case CTRL_CLOSE_EVENT:
+            cout << "Close event detected!" << endl;
+            CloseRIOApp();
             exit(0);
         default:
             return FALSE;
@@ -59,12 +63,20 @@ int main(int argc, char** argv) {
     cout << "\tMCast Port\t\t: " << args.McastPort << endl;
     cout << "\tInterface IP Address\t: " << args.IfIndex << endl;
 
-    if (args.pktsToCount > 0) {
-        if (SetConsoleCtrlHandler(NULL, TRUE) == 0) {
-            ErrorExit("SetConsoleCtrlHandler for ignoring Ctrl-C.");
-        }
-        cout << "Counting a total of: " << args.pktsToCount << " packets" << endl;
+
+    if (SetConsoleCtrlHandler(CtrlHandler, TRUE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for Ctrl-C.");
     }
+    #ifndef _SINGLELINE_LOG_
+        cout << "\tThe Control Handler is installed." << endl;
+    #endif
+    if (SetConsoleCtrlHandler(NULL, FALSE) == 0) {
+        ErrorExit("SetConsoleCtrlHandler for normal Ctrl-C processing.");
+    }
+    #ifndef _SINGLELINE_LOG_
+        cout << "\tNormal processing of Ctrl-C." << endl;
+        cout << "\tPress Ctrl-C to exit" << endl;
+    #endif
 
     GroupStatsMapInit(args);
 
@@ -177,7 +189,7 @@ int main(int argc, char** argv) {
                 if (!g_rio.RIOReceiveEx(
                         g_requestQueue, recvBuf, 1,
                         &g_addrLocRioBufs[g_addrLocRioBufIndex % g_addrLocRioBufTotalCount],
-                        &g_addrRemRioBufs[g_addrRemRioBufIndex % g_addrRemRioBufTotalCount],
+                        NULL, //&g_addrRemRioBufs[g_addrRemRioBufIndex % g_addrRemRioBufTotalCount],
                         NULL, 0, 0, recvBuf)) {
                     RioCleanUp();
                     ErrorExit("RIOReceiveEx Local Address");
@@ -186,25 +198,27 @@ int main(int argc, char** argv) {
 
                 pHdr = (ProtocolHeader_t*)(g_recvBufferPointer + recvBuf->Offset);
 
-#ifndef _HIDE_CONSOLE_LOG_
-                ShowHdr(pHdr);
-#endif
+                #ifndef _HIDE_CONSOLE_LOG_
+                    ShowHdr(pHdr);
+                #endif
 
                 addrLocBuf = &(g_addrLocRioBufs[g_addrLocRioBufIndex++ % g_addrLocRioBufTotalCount]);
 
                 addrLocOffset = g_addrLocBufferPointer + addrLocBuf->Offset;
 
-#ifndef _HIDE_CONSOLE_LOG_
-                ShowAddr((SOCKADDR_INET*)addrLocOffset);
-#endif
+                #ifndef _HIDE_CONSOLE_LOG_
+                    ShowAddr((SOCKADDR_INET*)addrLocOffset);
+                #endif
 
+                /*
                 addrRemBuf = &(g_addrRemRioBufs[g_addrRemRioBufIndex++ % g_addrRemRioBufTotalCount]);
 
                 addrRemOffset = g_addrRemBufferPointer + addrRemBuf->Offset;
 
-#ifndef _HIDE_CONSOLE_LOG_
-                ShowAddr((SOCKADDR_INET*)addrRemOffset);
-#endif
+                #ifndef _HIDE_CONSOLE_LOG_
+                    ShowAddr((SOCKADDR_INET*)addrRemOffset);
+                #endif
+                */
 
                 GroupStatsMapUpdate((SOCKADDR_INET*)addrLocOffset,
                                     EXPECTED_DATA_SIZE, pHdr);
@@ -250,9 +264,7 @@ int main(int argc, char** argv) {
         }
     } while (!done);
 
-    StopTiming();
-    PrintTimings();
-    RioCleanUp();
+    CloseRIOApp();
 
     return workValue;
 }

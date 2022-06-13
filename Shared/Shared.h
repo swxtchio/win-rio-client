@@ -748,7 +748,7 @@ inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
     //**
     //
     // ADDRESS REMOTE
-
+    /*
     /// registering RIO buffers for ADDR REM
     totalBufferCount = 0;
     totalBufferSize = 0;
@@ -778,6 +778,7 @@ inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
 
         offset += ADDR_BUFFER_SIZE;
     }
+    */
 
     // RECEIVE
     
@@ -813,7 +814,7 @@ inline void PostRIORecvs(const DWORD recvBufferSize, const DWORD pendingRecvs) {
         /// posting pre RECVs
         if (!g_rio.RIOReceiveEx(g_requestQueue, pBuffer, 1,
                                 &g_addrLocRioBufs[g_addrLocRioBufIndex++],
-                                &g_addrRemRioBufs[g_addrRemRioBufIndex++],
+                                NULL,   //&g_addrRemRioBufs[g_addrRemRioBufIndex++],
                                 NULL, 0, 0, pBuffer)) {
 
             printf_s("RIOReceive Error: %d\n", GetLastError());
@@ -1060,6 +1061,7 @@ inline void StopReaderThread() {
     ::CloseHandle(g_hReaderThread);
 }
 
+
 inline void PrintTimings(const char* pDirection = "Received ") {
     LARGE_INTEGER elapsed;
 
@@ -1073,12 +1075,29 @@ inline void PrintTimings(const char* pDirection = "Received ") {
         const double perSec = ((double)g_packets / (double)elapsed.QuadPart) * 1000.00;
         cout << g_otherPkts << " other packets" << endl;
 
-        std::cout << std::setprecision(2)
-                  << std::fixed
-                  << perSec << " datagrams per second" << endl;
+        std::cout << std::setprecision(2) << std::fixed << perSec << " datagrams per second"
+                  << endl;
     }
 
     GroupStatsMapPrint();
+}
+
+inline void PrintStatsSingleLine() {
+    LARGE_INTEGER elapsed;
+    double perSec = 0;
+
+    elapsed.QuadPart
+        = (g_stopCounter.QuadPart - g_startCounter.QuadPart) / (g_frequency.QuadPart / 1000);
+
+    if (elapsed.QuadPart != 0) {
+        perSec = ((double)g_packets / (double)elapsed.QuadPart) * 1000.00;
+    }
+
+    cout << std::setw(12) << elapsed.QuadPart << std::setw(12) << g_packets << std::setw(12)
+         << g_otherPkts << std::setw(14) << std::setprecision(2) << std::fixed << perSec
+         << std::setw(12) << GroupStatsMapTotalOOO() << endl;
+
+    // GroupStatsMapPrint();
 }
 
 inline void CleanupRIO() {
@@ -1095,6 +1114,18 @@ inline void CleanupRIO() {
         g_rio.RIODeregisterBuffer(*it);
     }
 }
+
+inline void CloseRIOApp() {
+    StopTiming();
+    #ifdef _SINGLELINE_LOG_
+        PrintStatsSingleLine();
+    #else
+        PrintTimings();
+    #endif
+    RioCleanUp();
+    // exit(0);
+}
+
 
 inline int DoWork(const size_t iterations) {
     int result = rand();

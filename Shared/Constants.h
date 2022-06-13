@@ -4,13 +4,13 @@ static const unsigned short PORTNUM = 10000;
 
 static const DWORD EXPECTED_DATA_SIZE = 100;
 
-static const DWORD RECV_BUFFER_SIZE = 256;
+static const DWORD RECV_BUFFER_SIZE = 1500;
 static const DWORD SEND_BUFFER_SIZE = 256;
 
-static const DWORD ADDR_BUFFER_SIZE = 64;
+static const DWORD ADDR_BUFFER_SIZE = 128;
 
 
-static const DWORD RIO_PENDING_RECVS = 4096;  // 1500000;
+static const DWORD RIO_PENDING_RECVS = 409600;  // 1500000;
 //static const DWORD RIO_PENDING_RECVS = 100000;
 static const DWORD RIO_PENDING_SENDS = 10000;
 
