@@ -101,8 +101,8 @@ void RioConsumer::Start() {
     RIORESULT results[MAX_RIO_RESULTS];
     ULONG mcAddrDescrIndex = 0;
     BOOL shouldNotify = true;
-    
-    m_Timing.setStart(); //set start time because report thread will crash if not
+
+    m_Timing.setStart();  // set start time because report thread will crash if not
     m_ReportThread = std::make_unique<std::thread>(&RioConsumer::ReportWorker, this);
     PostFirstRecvs(static_cast<DWORD>(m_MaxOutstandingReceive));
 
@@ -123,7 +123,7 @@ void RioConsumer::Start() {
             continue;
         }
         if (m_TotalPkts == 0)
-            m_Timing.setStart(); //overwrite start time
+            m_Timing.setStart();  // overwrite start time
 
         for (DWORD i = 0; i < numResults; ++i) {
             auto pBuffer = reinterpret_cast<RIO_BUF*>(results[i].RequestContext);
@@ -192,6 +192,9 @@ void RioConsumer::GroupStatsPrint() {
     uint64_t totalBytes = 0;
     uint64_t totalOutOfSequence = 0;
     uint64_t totalDrops = 0;
+    float totalPercentageReceived = 0.0;
+    float totalPercentageDrops = 0.0;
+    float totalPercentageOutOfOrder = 0.0;
 
     std::cout << "\n  Group           Packets        Bytes      Last Seq   OutOfOrder    Drops"
               << std::endl;
@@ -209,12 +212,23 @@ void RioConsumer::GroupStatsPrint() {
         totalOutOfSequence += value.OutOfOrder;
         totalDrops += value.RxDropped;
     }
+    uint64_t grandTotalPackets = totalPackets + totalDrops;
+    if (grandTotalPackets > 0) {
+        totalPercentageReceived = (float)totalPackets / (float)grandTotalPackets * 100.0;
+        totalPercentageDrops = (float)totalDrops / (float)grandTotalPackets * 100.0;
+        if (totalPackets > 0) {
+            totalPercentageOutOfOrder = (float)totalOutOfSequence / (float)totalPackets * 100.0;
+        }
+    }
     std::cout << "-----------------------------------------------------------------------------"
               << std::endl;
     std::cout << "Totals:"
               << "\t\t" << std::setw(10) << totalPackets << "  " << std::setw(12) << totalBytes
               << "    " << std::setw(20) << totalOutOfSequence << std::setw(12) << totalDrops
               << std::endl;
+    std::cout << "Total packets received: " << std::setw(10) << grandTotalPackets << std::endl;
+    printf("Percentages over total packets - Processed: %6.2f  Dropped: %6.2f  OutOfOrder: %6.2f\n",
+           totalPercentageReceived, totalPercentageDrops, totalPercentageOutOfOrder);
     std::cout << std::endl;
 }
 
