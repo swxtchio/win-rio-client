@@ -14,7 +14,7 @@ jobs:
         working-directory: .
 
       - name: Check out code
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.0.0
         with:
           fetch-depth: 0
           token: ${{ secrets.ACTIONS_TOKEN }}
