@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: win-server2022-latest-16core
+    runs-on: windows-latest
     steps:
       - name: Clean working directory
         shell: pwsh
