@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: [self-hosted, x64, windows-b]
+    runs-on: windows-latest
     steps:
       - name: Clean working directory
         shell: pwsh
@@ -14,13 +14,10 @@ jobs:
         working-directory: .
 
       - name: Check out code
-        uses: actions/checkout@v3.0.0
+        uses: actions/checkout@v3.1.0
         with:
           fetch-depth: 0
-
-      - name: Git submodule update
-        shell: pwsh
-        run: git submodule update --init --recursive --force
+          submodules: recursive
 
       - name: Visual Studio shell
         uses: egor-tensin/vs-shell@v2
@@ -30,9 +27,7 @@ jobs:
 
       - name: Configure build system
         shell: pwsh
-        run: |
-          cmake -S . -B build -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: |
-          cmake --build build --config Release -- /consoleloggerparameters:Nosummary
+        run: cmake --build build --config Release -- /consoleloggerparameters:Nosummary
