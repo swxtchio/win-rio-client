@@ -3,6 +3,12 @@ Simple multicast client test program that uses the RIO library
 
 ## Build instructions
 
+### Build with Github Actions
+If you need to build this repo, slack your Azure admin to start the runner (gh-runner-w-b).
+The self-hosted runner is shutdown since this repo is built infrequently. 
+There is a self-hosted runner dedicated to building this repo, since building XDP has some requirements that aren't accommodated by GH runners, like dual-NICs and the ability to reboot after installing XDP driver. 
+These are required now, but may not be required by later versions.
+
 ### Pre-requisites
 
 #### Visual Studio
