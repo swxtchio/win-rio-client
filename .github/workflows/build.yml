@@ -19,10 +19,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      # - name: Git submodule update
-      #   shell: pwsh
-      #   run: git submodule update --init --recursive --force
-
       - name: Visual Studio shell
         uses: egor-tensin/vs-shell@v2
 
